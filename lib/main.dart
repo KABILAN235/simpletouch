@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:simpletouch/airtouch_comms/airtouch_comms.dart';
 import 'package:simpletouch/models/air_touch_device.dart';
+import 'package:simpletouch/screens/device_scan.dart';
+import 'package:simpletouch/screens/get_started.dart';
 
 void main() => runApp(const MyApp());
 
@@ -10,11 +12,25 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'SimpleTouch',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.light,
+        ),
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
+      ),
+      themeMode: ThemeMode.system,
+      routes: {
+        "/get_started": (ctx) => GetStartedScreen(),
+        "/device_scan": (ctx) => DeviceScanScreen(),
+      },
+      initialRoute: "/get_started",
     );
   }
 }
@@ -50,27 +66,30 @@ class _MyHomePageState extends State<MyHomePage> {
               '$_counter',
               style: Theme.of(context).textTheme.headlineMedium,
             ),
-            FutureBuilder(future: AirtouchComms.discoverAirTouchDevices(timeout: Duration(seconds: 10)), builder: (ctx,snap){
-              if (snap.connectionState == ConnectionState.waiting) {
-                return const CircularProgressIndicator();
-              } else if (snap.hasError) {
-                return Text('Error: ${snap.error}');
-              } else if (!snap.hasData || (snap.data as List).isEmpty) {
-                return const Text('No devices found.');
-              } else {
-                final devices = snap.data as List<AirTouchDevice>;
-                return ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: devices.length,
-                  itemBuilder: (context, index) {
-                    final device = devices[index];
-                    return ListTile(
-                      title: Text(device.deviceName),
-                    );
-                  },
-                );
-              }
-            })
+            FutureBuilder(
+              future: AirtouchComms.discoverAirTouchDevices(
+                timeout: Duration(seconds: 10),
+              ),
+              builder: (ctx, snap) {
+                if (snap.connectionState == ConnectionState.waiting) {
+                  return const CircularProgressIndicator();
+                } else if (snap.hasError) {
+                  return Text('Error: ${snap.error}');
+                } else if (!snap.hasData || (snap.data as List).isEmpty) {
+                  return const Text('No devices found.');
+                } else {
+                  final devices = snap.data as List<AirTouchDevice>;
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: devices.length,
+                    itemBuilder: (context, index) {
+                      final device = devices[index];
+                      return ListTile(title: Text(device.deviceName));
+                    },
+                  );
+                }
+              },
+            ),
           ],
         ),
       ),
