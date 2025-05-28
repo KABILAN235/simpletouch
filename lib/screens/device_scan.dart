@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:simpletouch/airtouch_comms/airtouch_comms.dart';
 import 'package:simpletouch/models/air_touch_device.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class DeviceScanScreen extends StatefulWidget {
   const DeviceScanScreen({super.key});
@@ -43,6 +44,11 @@ class _DeviceScanScreenState extends State<DeviceScanScreen> {
     }
   }
 
+  Future<void> onSelect(AirTouchDevice device) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('device', device.toString());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -62,8 +68,11 @@ class _DeviceScanScreenState extends State<DeviceScanScreen> {
                       leading: Icon(Icons.devices),
                       title: Text(device.deviceName),
                       subtitle: Text("Address : ${device.ip}"),
-                      onTap: () {
-                        // Handle device selection
+                      onTap: () async {
+                        await onSelect(device);
+                        if (mounted) {
+                          Navigator.of(context).pushReplacementNamed('/home');
+                        }
                       },
                     ),
                   );
