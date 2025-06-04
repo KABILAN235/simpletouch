@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -392,47 +393,7 @@ class AirtouchComms {
       timeout: Duration(seconds: 15),
     );
 
-    // parse repeat count at offset = header(4)+addr2+id+type+len2+subtype(1)+padding(7) = byte 16
-    final repeatCount = resp[17];
-    final list = <ACStatus>[];
-    int offset = 17;
-
-    for (int i = 0; i < repeatCount; i++) {
-      final bytes = resp.sublist(offset, offset + 8);
-      offset += 8;
-      // Byte 0: index (lower 6 bits), power (top 2): 0=off,1=on,3=turbo
-      final b0 = bytes[0];
-      final index = b0 & 0x3F;
-      final power = (b0 & 0xC0) >> 6;
-      // Byte 1: mode: 0=cool,1=heat,2=dry,3=fan
-      final mode = (bytes[1] & 0x03);
-      // Byte 2: fan speed 0–7 (0=auto)
-      final fanSpeed = bytes[2] & 0x07;
-      // Byte 3: swing active flag (bit7)
-      final swing = (bytes[3] & 0x80) != 0;
-      // Byte 4: set-point raw: (value+100)/10
-      final spRaw = bytes[4];
-      final setPoint = (spRaw == 0xFF) ? null : (spRaw + 100) / 10.0;
-      // Byte 5: current temp raw/10 (0xFF=none)
-      final tRaw = bytes[5];
-      final temperature =
-          (tRaw == 0xFF) ? null : (tRaw - 50) / 10.0; // example bias
-      // Byte 6: error flags
-      final errors = bytes[6];
-      // Byte 7: reserved
-      list.add(
-        ACStatus(
-          index: index,
-          power: power,
-          mode: ACMode.values[mode],
-          fanSpeed: fanSpeed,
-          swing: swing,
-          setPoint: setPoint,
-          temperature: temperature,
-          errorFlags: errors,
-        ),
-      );
-    }
+    final list = ACStatus.parseACStatusMessage(resp);
 
     return list;
   }
