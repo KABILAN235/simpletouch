@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -205,6 +204,7 @@ class AirtouchComms {
     final completer = Completer<Uint8List>();
     final buffer = BytesBuilder();
     late StreamSubscription<Uint8List> sub;
+
     sub = _socket!.listen(
       (data) {
         buffer.add(data);

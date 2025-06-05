@@ -36,6 +36,7 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_animate: ^4.5.2
   shared_preferences: ^2.5.3
+  sleek_circular_slider: ^2.1.0
 
 dev_dependencies:
   flutter_test:
