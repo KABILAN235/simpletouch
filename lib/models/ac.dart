@@ -54,9 +54,11 @@ class ACStatus {
     required this.errorFlags,
   });
 
-  static Future<List<ACStatus>> parseACStatusMessage(
+  static Future<List<ACStatus>?> parseACStatusMessage(
     Uint8List statusMessage,
   ) async {
+    // Check if this is an ACStatus Message. Return null if it's not
+    if (statusMessage[10] != 0x23) return null;
     // parse repeat count at offset = header(4)+addr2+id+type+len2+subtype(1)+padding(7) = byte 16
     final repeatCount = statusMessage[17];
     final list = <ACStatus>[];

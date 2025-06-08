@@ -8,8 +8,14 @@ import 'package:simpletouch/models/ac.dart';
 import 'package:simpletouch/models/air_touch_device.dart';
 import 'package:simpletouch/models/zone.dart';
 
-class AirtouchComms {
+class AirtouchComms extends ChangeNotifier {
   Socket? _socket; // Added to store the socket instance
+
+  // State
+
+  bool _connectedToConsole = false;
+
+  List<ACStatus>? _connectedACStatus;
 
   static const _header = [0x55, 0x55, 0x55, 0xAA];
   static const _controlType = 0xC0;
@@ -124,6 +130,7 @@ class AirtouchComms {
 
   /// Connects to the master console of the given device.
   Future<void> connectToConsole(AirTouchDevice device) async {
+    _connectedToConsole = false;
     if (_socket != null) {
       await _socket?.close(); // Close existing socket if any
       _socket = null;
@@ -132,9 +139,14 @@ class AirtouchComms {
     try {
       _socket = await Socket.connect(device.ip, _tcpPort);
       debugPrint("Connected to AirTouch console at ${device.ip}:$_tcpPort");
+      _connectedToConsole = true;
+      _socket!.listen(_recievedPacketHandler, cancelOnError: true);
+      notifyListeners();
     } catch (e) {
       debugPrint("Failed to connect to AirTouch console: $e");
       _socket = null; // Ensure socket is null on failure
+      _connectedToConsole = false;
+      notifyListeners();
       rethrow; // Rethrow the exception to be handled by the caller
     }
   }
@@ -143,7 +155,38 @@ class AirtouchComms {
   Future<void> disconnect() async {
     await _socket?.close();
     _socket = null;
+    _connectedToConsole = false;
     debugPrint("Disconnected from AirTouch console.");
+  }
+
+  void _recievedPacketHandler(Uint8List data) async {
+    final buffer = BytesBuilder();
+    buffer.add(data);
+    final bytes = buffer.toBytes();
+    Uint8List? message;
+    // look for 0x55 0x55 0x55 0xAA
+    for (int i = 0; i + 4 <= bytes.length; i++) {
+      if (bytes[i] == 0x55 &&
+          bytes[i + 1] == 0x55 &&
+          bytes[i + 2] == 0x55 &&
+          bytes[i + 3] == 0xAA) {
+        // assume rest is full packet → hand off
+        message = bytes.sublist(i);
+      }
+    }
+
+    if (message == null) return; // Invalid stuff
+
+    // Just for this one, parse the message as an ACStatus Message
+    try {
+      final acStatus = await ACStatus.parseACStatusMessage(message);
+      if (acStatus != null) {
+        _connectedACStatus = acStatus;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Bad Message");
+    }
   }
 
   /// Builds a packet according to Section 3 of the protocol.
@@ -191,129 +234,72 @@ class AirtouchComms {
   }
 
   /// Send a raw packet and await the next response as Uint8List.
-  Future<Uint8List> _sendPacketAndReceive(
-    Uint8List packet, {
-    Duration timeout = const Duration(seconds: 3),
-  }) async {
+  Future<void> _sendPacket(Uint8List packet) async {
     if (_socket == null) {
       throw StateError('Socket is not connected. Call connectToConsole first.');
     }
     _socket!.add(packet);
     await _socket!.flush();
-    // read until header found
-    final completer = Completer<Uint8List>();
-    final buffer = BytesBuilder();
-    late StreamSubscription<Uint8List> sub;
-
-    sub = _socket!.listen(
-      (data) {
-        buffer.add(data);
-        final bytes = buffer.toBytes();
-        // look for 0x55 0x55 0x55 0xAA
-        for (int i = 0; i + 4 <= bytes.length; i++) {
-          if (bytes[i] == 0x55 &&
-              bytes[i + 1] == 0x55 &&
-              bytes[i + 2] == 0x55 &&
-              bytes[i + 3] == 0xAA) {
-            // assume rest is full packet → hand off
-            if (!completer.isCompleted) {
-              completer.complete(bytes.sublist(i));
-            }
-            sub.cancel();
-            return;
-          }
-        }
-      },
-      onError: (error, stackTrace) {
-        if (!completer.isCompleted) {
-          completer.completeError(error, stackTrace);
-        }
-        sub.cancel();
-      },
-      onDone: () {
-        if (!completer.isCompleted) {
-          completer.completeError(
-            StateError(
-              'Socket closed unexpectedly while waiting for response.',
-            ),
-          );
-        }
-      },
-      cancelOnError: true,
-    );
-    return completer.future.timeout(
-      timeout,
-      onTimeout: () {
-        sub.cancel();
-        if (!completer.isCompleted) {
-          // Ensure buffer is cleared or handled if needed
-          buffer.clear();
-          throw TimeoutException('No response within $timeout');
-        }
-        // if completer already completed (e.g. with an error), return that future
-        return completer.future;
-      },
-    );
   }
 
   /// Request Zone Status (sub-type 0x21).
-  Future<List<ZoneStatus>> getZoneStatus() async {
-    if (_socket == null) {
-      throw StateError('Socket is not connected. Call connectToConsole first.');
-    }
-    // data: subtype byte + padding (8 bytes total header for C0)
-    final data = Uint8List.fromList([
-      0x21,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-      0x00,
-    ]);
-    final packet = _buildPacket(
-      address: _addrControl,
-      messageId: 0x01,
-      messageType: _controlType,
-      data: data,
-    );
-    final response = await _sendPacketAndReceive(packet);
-    // parse repeat count at byte offset 10 (after header[4]+addr2+id+type+len2+subtype etc)
-    final repeatCount = response[4 + 2 + 1 + 1 + 2 + 7];
-    final list = <ZoneStatus>[];
-    int offset = 4 + 2 + 1 + 1 + 2 + 8;
-    for (int i = 0; i < repeatCount; i++) {
-      final b1 = response[offset++];
-      final power = (b1 & 0xC0) >> 6;
-      final index = b1 & 0x3F;
-      final b2 = response[offset++];
-      final isTemp = (b2 & 0x80) != 0;
-      final openPct = b2 & 0x7F;
-      final setPtRaw = response[offset++];
-      final setPoint = setPtRaw == 0xFF ? null : (setPtRaw + 100) / 10;
-      final hasSensor = (response[offset++] & 0x80) != 0;
-      final tempRaw = (response[offset++] & 0x0F) << 8 | response[offset++];
-      final temperature = hasSensor ? (tempRaw - 500) / 10 : null;
-      final flags = response[offset++];
-      final spill = (flags & 0x04) != 0;
-      final lowBatt = (flags & 0x01) != 0;
-      offset += 2; // skip unused
-      list.add(
-        ZoneStatus(
-          index: index,
-          power: power,
-          controlMethodIsTemp: isTemp,
-          openPercentage: openPct,
-          setPoint: setPoint,
-          temperature: temperature,
-          spill: spill,
-          lowBattery: lowBatt,
-        ),
-      );
-    }
-    return list;
-  }
+  // Future<List<ZoneStatus>> getZoneStatus() async {
+  //   if (_socket == null) {
+  //     throw StateError('Socket is not connected. Call connectToConsole first.');
+  //   }
+  //   // data: subtype byte + padding (8 bytes total header for C0)
+  //   final data = Uint8List.fromList([
+  //     0x21,
+  //     0x00,
+  //     0x00,
+  //     0x00,
+  //     0x00,
+  //     0x00,
+  //     0x00,
+  //     0x00,
+  //   ]);
+  //   final packet = _buildPacket(
+  //     address: _addrControl,
+  //     messageId: 0x01,
+  //     messageType: _controlType,
+  //     data: data,
+  //   );
+  //   final response = await _sendPacket(packet);
+  //   // parse repeat count at byte offset 10 (after header[4]+addr2+id+type+len2+subtype etc)
+  //   final repeatCount = response[4 + 2 + 1 + 1 + 2 + 7];
+  //   final list = <ZoneStatus>[];
+  //   int offset = 4 + 2 + 1 + 1 + 2 + 8;
+  //   for (int i = 0; i < repeatCount; i++) {
+  //     final b1 = response[offset++];
+  //     final power = (b1 & 0xC0) >> 6;
+  //     final index = b1 & 0x3F;
+  //     final b2 = response[offset++];
+  //     final isTemp = (b2 & 0x80) != 0;
+  //     final openPct = b2 & 0x7F;
+  //     final setPtRaw = response[offset++];
+  //     final setPoint = setPtRaw == 0xFF ? null : (setPtRaw + 100) / 10;
+  //     final hasSensor = (response[offset++] & 0x80) != 0;
+  //     final tempRaw = (response[offset++] & 0x0F) << 8 | response[offset++];
+  //     final temperature = hasSensor ? (tempRaw - 500) / 10 : null;
+  //     final flags = response[offset++];
+  //     final spill = (flags & 0x04) != 0;
+  //     final lowBatt = (flags & 0x01) != 0;
+  //     offset += 2; // skip unused
+  //     list.add(
+  //       ZoneStatus(
+  //         index: index,
+  //         power: power,
+  //         controlMethodIsTemp: isTemp,
+  //         openPercentage: openPct,
+  //         setPoint: setPoint,
+  //         temperature: temperature,
+  //         spill: spill,
+  //         lowBattery: lowBatt,
+  //       ),
+  //     );
+  //   }
+  //   return list;
+  // }
 
   /// Control a single zone (sub-type 0x20).
   /// [action] is one of: decrease, increase, setPct, setTemp, toggleOnOff, off, on, turbo.
@@ -372,11 +358,11 @@ class AirtouchComms {
       messageType: _controlType,
       data: data.toBytes(),
     );
-    await _sendPacketAndReceive(packet);
+    await _sendPacket(packet);
   }
 
   /// Request split-system (AC) status (sub-type 0x23).
-  Future<List<ACStatus>> getACStatus() async {
+  Future<void> requestACStatus() async {
     if (_socket == null) {
       throw StateError('Socket is not connected. Call connectToConsole first.');
     }
@@ -388,14 +374,7 @@ class AirtouchComms {
       messageType: _controlType,
       data: data,
     );
-    final resp = await _sendPacketAndReceive(
-      packet,
-      timeout: Duration(seconds: 15),
-    );
-
-    final list = ACStatus.parseACStatusMessage(resp);
-
-    return list;
+    await _sendPacket(packet);
   }
 
   /// Control an AC unit (sub-type 0x22).
@@ -474,6 +453,11 @@ class AirtouchComms {
       data: data.toBytes(),
     );
 
-    await _sendPacketAndReceive(packet);
+    await _sendPacket(packet);
   }
+
+  // Getters
+  bool get connectedToConsole => _connectedToConsole;
+
+  List<ACStatus>? get connectedACStatus => _connectedACStatus;
 }
