@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:simpletouch/models/ac.dart';
 import 'package:simpletouch/models/air_touch_device.dart';
 import 'package:simpletouch/models/zone.dart';
+import 'package:simpletouch/themes.dart';
 
 class AirtouchComms extends ChangeNotifier {
   Socket? _socket; // Added to store the socket instance
@@ -16,6 +17,36 @@ class AirtouchComms extends ChangeNotifier {
   bool _connectedToConsole = false;
 
   List<ACStatus>? _connectedACStatus;
+
+  ThemeData _lightTheme = ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: Colors.orangeAccent,
+      brightness: Brightness.light,
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: ButtonStyle(
+        shape: WidgetStateProperty.all<RoundedRectangleBorder>(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+        ),
+      ),
+    ),
+  );
+
+  ThemeData _darkTheme = ThemeData(
+    useMaterial3: true,
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: Colors.orangeAccent,
+      brightness: Brightness.dark,
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: ButtonStyle(
+        shape: WidgetStateProperty.all<RoundedRectangleBorder>(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+        ),
+      ),
+    ),
+  );
 
   static const _header = [0x55, 0x55, 0x55, 0xAA];
   static const _controlType = 0xC0;
@@ -182,6 +213,15 @@ class AirtouchComms extends ChangeNotifier {
       final acStatus = await ACStatus.parseACStatusMessage(message);
       if (acStatus != null) {
         _connectedACStatus = acStatus;
+        // Change theme according to the first AC's Status
+        final themes = getThemesForACMode(
+          acStatus[0].mode,
+          _lightTheme,
+          _darkTheme,
+        );
+        _lightTheme = themes[Brightness.light] ?? _lightTheme;
+        _darkTheme = themes[Brightness.dark] ?? _darkTheme;
+
         notifyListeners();
       }
     } catch (e) {
@@ -460,4 +500,6 @@ class AirtouchComms extends ChangeNotifier {
   bool get connectedToConsole => _connectedToConsole;
 
   List<ACStatus>? get connectedACStatus => _connectedACStatus;
+  ThemeData get lightTheme => _lightTheme;
+  ThemeData get darkTheme => _darkTheme;
 }

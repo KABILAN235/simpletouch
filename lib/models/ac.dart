@@ -1,6 +1,18 @@
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
+
 enum ACMode { auto, heat, dry, fan, cool, autoHeat, autoCool }
+
+final acModeToIconMap = {
+  ACMode.auto: Icons.autorenew,
+  ACMode.heat: Icons.wb_sunny,
+  ACMode.dry: Icons.grain,
+  ACMode.fan: Icons.air, // or Icons.air
+  ACMode.cool: Icons.ac_unit,
+  ACMode.autoHeat: Icons.thermostat_auto,
+  ACMode.autoCool: Icons.snowing,
+};
 
 enum ACPowerState { off, on, awayOff, awayOn, sleep }
 

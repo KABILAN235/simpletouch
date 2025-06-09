@@ -3,60 +3,35 @@ import 'package:provider/provider.dart';
 import 'package:simpletouch/airtouch_comms/airtouch_comms.dart';
 import 'package:simpletouch/screens/device_scan.dart';
 import 'package:simpletouch/screens/get_started.dart';
-import 'package:simpletouch/screens/home_screen.dart';
+import 'package:simpletouch/screens/home_screen/home_screen.dart';
 
-void main() => runApp(const MyApp());
+void main() => runApp(
+  ChangeNotifierProvider(
+    create: (context) => AirtouchComms(),
+    child: const MyApp(),
+  ),
+);
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => AirtouchComms(),
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'SimpleTouch',
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.orangeAccent,
-            brightness: Brightness.light,
+    return Consumer<AirtouchComms>(
+      builder:
+          (ctx, comms, _) => MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'SimpleTouch',
+            theme: comms.lightTheme,
+            darkTheme: comms.darkTheme,
+            themeMode: ThemeMode.system,
+            routes: {
+              "/get_started": (ctx) => GetStartedScreen(),
+              "/device_scan": (ctx) => DeviceScanScreen(),
+              "/home": (ctx) => HomeScreen(),
+            },
+            initialRoute: "/get_started",
           ),
-          filledButtonTheme: FilledButtonThemeData(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all<RoundedRectangleBorder>(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-              ),
-            ),
-          ),
-        ),
-        darkTheme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.orangeAccent,
-            brightness: Brightness.dark,
-          ),
-          filledButtonTheme: FilledButtonThemeData(
-            style: ButtonStyle(
-              shape: WidgetStateProperty.all<RoundedRectangleBorder>(
-                RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-              ),
-            ),
-          ),
-        ),
-        themeMode: ThemeMode.system,
-        routes: {
-          "/get_started": (ctx) => GetStartedScreen(),
-          "/device_scan": (ctx) => DeviceScanScreen(),
-          "/home": (ctx) => HomeScreen(),
-        },
-        initialRoute: "/get_started",
-      ),
     );
   }
 }
