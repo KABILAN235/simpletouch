@@ -85,10 +85,18 @@ class _HomeScreenState extends State<HomeScreen> {
                   ].contains(powerState);
 
                   final button =
-                      isOff ? FilledButton.icon : FilledButton.tonalIcon;
+                      isOff ? FilledButton.tonalIcon : FilledButton.icon;
 
                   return button(
-                    onPressed: () {},
+                    onPressed: () async {
+                      await Provider.of<AirtouchComms>(
+                        context,
+                        listen: false,
+                      ).controlAC(
+                        0,
+                        powerState: isOff ? ACPowerState.on : ACPowerState.off,
+                      );
+                    },
                     label: const Icon(Icons.power_settings_new_outlined),
                   );
                 },
@@ -135,7 +143,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                   initialValue:
                                       comms.connectedACStatus![0].setPoint ??
                                       18,
-                                  onChange: (value) {},
+                                  onChange: (value) {
+                                    comms.changeACSetPoint(0, value.toInt());
+                                  },
                                   innerWidget:
                                       (val) => Center(
                                         child: Text(

@@ -20,7 +20,7 @@ class ACModeButtons extends StatelessWidget {
         return Row(
           spacing: 8.0,
           children: [
-            ...ACMode.values.map((currentMode) {
+            ...ACMode.values.take(5).map((currentMode) {
               final activeMode = currentMode == mode;
 
               final button =
@@ -30,7 +30,9 @@ class ACModeButtons extends StatelessWidget {
                 child: SizedBox(
                   height: 48,
                   child: button(
-                    onPressed: () {},
+                    onPressed: () {
+                      comms.controlAC(0, mode: currentMode);
+                    },
                     label: Icon(acModeToIconMap[currentMode]),
                   ),
                 ),

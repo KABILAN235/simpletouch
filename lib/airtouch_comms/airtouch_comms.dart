@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -417,80 +418,82 @@ class AirtouchComms extends ChangeNotifier {
     await _sendPacket(packet);
   }
 
-  /// Control an AC unit (sub-type 0x22).
-  Future<void> controlAC({
-    required int acIndex,
-    ACAction action = ACAction.setOff,
-    double? temperature, // only for setPoint
-    int? fanSpeed, // 0–7
-    bool? swing, // true=on, false=off
-  }) async {
-    if (_socket == null) {
-      throw StateError('Socket is not connected. Call connectToConsole first.');
-    }
-    final repeat = <int>[];
+  Future<void> changeACSetPoint(int acIndex, int setPoint) async {
+    final transformedSetPoint = (setPoint * 10) - 100;
 
-    // Byte0 = index
-    repeat.add(acIndex & 0x3F);
-
-    // Byte1 = action code
-    switch (action) {
-      case ACAction.setOff:
-        repeat.add(0x00);
-        break;
-      case ACAction.setOn:
-        repeat.add(0x01);
-        break;
-      case ACAction.setCool:
-        repeat.add(0x10);
-        break;
-      case ACAction.setHeat:
-        repeat.add(0x11);
-        break;
-      case ACAction.setDry:
-        repeat.add(0x12);
-        break;
-      case ACAction.setFan:
-        repeat.add(0x13);
-        break;
-      case ACAction.setTemp:
-        repeat.add(0x90);
-        break;
-      case ACAction.fanSpeed:
-        repeat.add(0xA0);
-        break;
-      case ACAction.swing:
-        repeat.add(0xB0);
-        break;
-    }
-
-    // Byte2 = value
-    int val = 0;
-    if (action == ACAction.setTemp && temperature != null) {
-      val = ((temperature * 10) - 100).toInt() & 0xFF;
-    } else if (action == ACAction.fanSpeed && fanSpeed != null) {
-      val = fanSpeed & 0x07;
-    } else if (action == ACAction.swing && swing != null) {
-      val = swing ? 1 : 0;
-    }
-    repeat.add(val);
-
-    // Byte3 = reserved
-    repeat.add(0x00);
-
-    // Build data: subtype, pad×3, repeat count, pad, repeats…
-    final data =
-        BytesBuilder()
-          ..add([0x22, 0x00, 0x00, 0x00])
-          ..addByte(repeat.length) // count = 4
-          ..addByte(0x00) // padding
-          ..add(repeat);
+    final data = Uint8List.fromList([
+      0x22,
+      0,
+      0,
+      0,
+      0,
+      4,
+      0,
+      1,
+      (0x0 | (acIndex & 0xF)),
+      0xFF,
+      0x40, // Keep setpoint for this implementation
+      transformedSetPoint,
+    ]);
 
     final packet = _buildPacket(
       address: _addrControl,
       messageId: 0x12,
       messageType: _controlType,
-      data: data.toBytes(),
+      data: data,
+    );
+
+    await _sendPacket(packet);
+  }
+
+  /// Control a single AC unit (sub-type 0x22).
+  Future<void> controlAC(
+    int acIndex, {
+    ACPowerState? powerState,
+    ACMode? mode,
+    ACFanSpeed? speed,
+  }) async {
+    if (powerState == null && mode == null && speed == null) {
+      return;
+    }
+
+    if (_socket == null) {
+      throw StateError('Socket is not connected. Call connectToConsole first.');
+    }
+
+    // Just planning to support Turn off and On for now
+    final powerStateBits =
+        powerState != null
+            ? powerState == ACPowerState.on
+                ? 0x30
+                : 0x20
+            : 0x0;
+
+    final acModeBits = mode != null ? mode.index & 0xF : 0xF;
+    final acFanSpeedBits = speed != null ? speed.index & 0xF : 0xF;
+
+    final controlByte = (acModeBits << 4) | acFanSpeedBits;
+
+    final data = Uint8List.fromList([
+      0x22,
+      0,
+      0,
+      0,
+      0,
+      4,
+      0,
+      1,
+      (powerStateBits | (acIndex & 0xF)),
+      controlByte,
+      0, // Keep setpoint for this implementation
+      0,
+    ]);
+
+    final packet = _buildPacket(
+      address: _addrControl,
+      messageId: 0x12,
+      messageType: _controlType,
+      data: data,
     );
 
     await _sendPacket(packet);
